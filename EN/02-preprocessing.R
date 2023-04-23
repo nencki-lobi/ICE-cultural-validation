@@ -23,11 +23,11 @@ library('tidyr')
 # df = dbGetQuery(con, query)
 # save(df, file = "./02/input/dataset.RData")
 
-load(file = "./02/input/dataset.RData")
+load(file = "./EN/02/input/dataset.RData")
 
 ## Load subjects
 
-load(file = "./01/output/subjects.RData")
+load(file = "./EN/01/output/subjects.RData")
 
 ## List of questionnaires
 
@@ -43,7 +43,7 @@ questionnaires = NULL
 
 for (i in 1:nquest) {
   fname = paste(qnames[i], ".tsv", sep="")
-  items = read.table(file.path("./02/input",fname), header = F, sep = "\t", encoding = "UTF-8")
+  items = read.table(file.path("./EN/02/input",fname), header = F, sep = "\t", encoding = "UTF-8")
   
   header = c("PL","EN","NO","code")
   colnames(items) = header[1:ncol(items)]
@@ -121,4 +121,4 @@ names(code_to_no) = items$code
 ## Save output
 
 save(questionnaires, qdata, code_to_pl, code_to_en, code_to_no, 
-     file = "./02/output/dataset.RData")
+     file = "./EN/02/output/dataset.RData")

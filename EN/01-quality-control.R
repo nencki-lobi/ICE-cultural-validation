@@ -19,22 +19,22 @@ library("openxlsx")
 # JOIN external_infact e ON e.sid = s.sid
 # JOIN quest q ON q.sid = s.sid
 # JOIN answer a ON a.qid = q.qid
-# WHERE s.stid = 7 AND s.qidv_idx > 12
-# AND q.name IN ('demo-0-no', 'ICE-60-no')
+# WHERE s.stid = 6 AND s.qidv_idx > 12
+# AND q.name IN ('demo-0-en', 'ICE-60-en')
 # ORDER BY s.sid, q.name, a.ord"
 # 
 # df = dbGetQuery(con, query)
 # save(df, file = "./01/input/dataset.RData")
 
-load(file = "./01/input/dataset.RData")
+load(file = "./EN/01/input/dataset.RData")
 
 ## Get data needed for quality control
 
 demo = c(0,1,3,4:6) # CC concern, sex, birth, country, languages
 checks = c(19,34,44) # CHECK questions
 
-data1 = filter(df, (name == 'demo-0-no' & ord %in% demo) | 
-                   (name == 'ICE-60-no' & ord %in% checks))
+data1 = filter(df, (name == 'demo-0-en' & ord %in% demo) | 
+                 (name == 'ICE-60-en' & ord %in% checks))
 
 data1 = select(data1, sid, code, rid, name, ord, val) %>%
   pivot_wider(id_cols = c("sid", "code", "rid"),
@@ -49,17 +49,17 @@ data1 = data1 %>% mutate(across(4:9, as.integer))
 
 ## Get company data needed for quality control
 
-data2 = read.xlsx("./01/input/Syno_InFact_Climate change Norway and Ireland March 2022_Norway_Raw data_25052022.xlsx")
-data2 = data2[,c(3,13,6,5)]
+data2 = read.xlsx("./EN/01/input/recruited.xlsx")
+data2 = data2[,c(3,14,6,5)]
 
 colnames(data2) = c("rid", "CC", "sex", "birth")
 
-data2$sex = recode(data2$sex, "Kvinne" = 0, "Mann" = 1, "Annet" = 2)
-data2$CC = recode(data2$CC, "1 - Ikke bekymret i det hele tatt" = 0, "2" = 0,
-                                   "3" = 1, "4"= 1, 
-                                   "5" = 2, "6" = 2, 
-                                   "7" = 3, "8" = 3, 
-                                   "9" = 4, "10 - Ekstremt bekymret" = 4)
+data2$sex = recode(data2$sex, "Female" = 0, "Male" = 1, "Other" = 2)
+data2$CC = recode(data2$CC, "1 - Not at all concerned" = 0, "2" = 0,
+                  "3" = 1, "4"= 1, 
+                  "5" = 2, "6" = 2, 
+                  "7" = 3, "8" = 3, 
+                  "9" = 4, "10 - Extremely concerned" = 4)
 
 ## Remove test data
 
@@ -72,8 +72,8 @@ sprintf('Final sample size: N = %d', nrow(data)) # initial sample size
 
 # country & languages
 
-data = data %>% filter(country == "Norge")
-data = data %>% filter(language1 == "Norsk" | language2 == "Norsk")
+data = data %>% filter(country == "Ireland")
+data = data %>% filter(language1 == "English" | language2 == "English")
 
 # consistent reporting on sex
 data = data %>% mutate(sex.matches = (sex.1 == sex.2))
@@ -88,13 +88,13 @@ data = data %>% mutate(CC.matches = (abs(CC.1 - CC.2) < 3))
 data = data %>% mutate(acceptable.checks = ((CHECK1 == 0) + (CHECK2 == 2) + (CHECK3 == 4) > 2))
 
 data = filter(data, sex.matches == TRUE 
-                & birth.matches  == TRUE
-                #& CC.matches == TRUE 
-                & acceptable.checks == TRUE)
+              & birth.matches  == TRUE
+              #& CC.matches == TRUE 
+              & acceptable.checks == TRUE)
 
 sprintf('Final sample size: N = %d', nrow(data)) # final sample size
 
 ## Save output
 
 subjects = data[,c("sid", "code", "rid")]
-save(subjects, file = "./01/output/subjects.RData")
+save(subjects, file = "./EN/01/output/subjects.RData")
