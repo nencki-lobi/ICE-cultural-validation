@@ -1,6 +1,6 @@
 # Cross-cultural validation of the Inventory of Climate Emotions (ICE)
 
-This repository contains supplementary materials (data and code) associated with the manuscript describing the cross-cultural validation of the of the Inventory of Climate Emotions (ICE). The remaining supplementary materials can be found on the accompanying [OSF website]().
+This repository contains supplementary materials (data and code) associated with the manuscript describing the cross-cultural validation of the of the Inventory of Climate Emotions (ICE). The remaining supplementary materials can be found on the accompanying [OSF website](https://osf.io/r8g6h/).
 
 Please cite the corresponding publication when using these materials:
 
