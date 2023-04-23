@@ -1,0 +1,296 @@
+---
+title: "Cross-Cultural Validation of the ICE: Measurement Equivalence"
+author: "Michalina Marczak"
+date: '2022-10-05'
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: false
+---
+
+```{r setup, include=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = F)
+```
+
+```{r, include=F}
+#set the global options
+options(max.print=999999)  #allows printing out large outputs
+options(scipen = 999)     #disables scientific notation (uses decimal instead)      
+set.seed(9999) # set seed for replicability
+
+####### libraries
+library(tidyverse)
+library(lavaan)
+library(lmtest)
+```
+
+## Introduction
+Establishing measurement invariance begins with specification and testing of the hypothesized model (i.e., postulated structure of the measurement instrument under study) for each group separately.
+
+I have fitted separate models for Poland, Norway & Ireland in the previous steps (see P3_Ireland and P3_Norway; the details on the Poland model are available here: https://psyarxiv.com/s9gzb/). All three models showed reasonably good fit.
+
+```{r, include=F}
+#Now I will combine the data for each country in the same file to form the multigroup model,
+
+#Load the datasets and save them in dataframes
+## I need all the variables for future CFA model specification to have the same names across countries
+# So before I move on, I will get rid of the part of the variable names indicating the language
+# I will also add a column with the country name to each dataframe which will come handy in the next steps
+
+#Norway
+load(Sys.readlink("./NO/dataset-Norway.RData"))
+
+norway_ice <- dplyr::select(qdata, starts_with("ICE-60-"))
+norway_ice <- as.data.frame(norway_ice)
+norway_ice <- as.data.frame(lapply(norway_ice, as.numeric)) #change the variables type from character to numeric (keeping them in the data frame format)
+norway_ice <- norway_ice + 1 # For the descriptives, the response format should be 1-5 not 0-4, hence we add 1 to each value in the data frame
+
+names(norway_ice) <- sub("ICE.60.no.", "", names(norway_ice)) # Here I remove part of the name that makes the variable names differ
+
+norway_ice$country <- rep("Norway", length(norway_ice$ANG14)) # add a column with country name
+
+#Ireland
+load(Sys.readlink("./EN/dataset-Ireland.RData"))
+ireland_ice <- dplyr::select(qdata, starts_with("ICE-60-en"))
+ireland_ice <- as.data.frame(ireland_ice)
+ireland_ice <- as.data.frame(lapply(ireland_ice, as.numeric)) #change the variables type from character to numeric (keeping them in the data frame format)
+ireland_ice <- ireland_ice + 1 # For the descriptives, the response format should be 1-5 not 0-4, hence we add 1 to each value in the data frame
+
+names(ireland_ice) <- sub("ICE.60.en.", "", names(ireland_ice)) # Here I remove part of the name that makes the variable names differ
+
+ireland_ice$country <- rep("Ireland", length(ireland_ice$ANG14)) # add a column with country name
+
+#Poland
+load("./PL/dataset-Poland.RData")
+poland_ice <- dplyr::select(qdata, starts_with("ICE-60-pl"))
+poland_ice <- as.data.frame(poland_ice)
+poland_ice <- as.data.frame(lapply(poland_ice, as.numeric)) #change the variables type from character to numeric (keeping them in the data frame format)
+poland_ice <- poland_ice + 1 # For the descriptives, the response format should be 1-5 not 0-4, hence we add 1 to each value in the data frame
+
+names(poland_ice) <- sub("ICE.60.pl.", "", names(poland_ice)) # Here I remove part of the name that makes the variable names differ
+
+poland_ice$country <- rep("Poland", length(poland_ice$ANG14)) # add a column with country name
+
+## Merge the dataframes 
+df_list <- list(norway_ice, ireland_ice, poland_ice)
+multi_ice <- df_list %>% 
+  reduce(full_join)
+```
+
+This is the confirmatory factor model of climate emotions that was fit across Poland, Norway and Ireland.
+
+```{r, include=T, echo = T}
+model <- 'climate_anger =~ ANG14 + ANG13 + ANG10 + ANG3
+          climate_contempt =~ DIS5 + DIS7 + IND2 + IND13
+          climate_enthusiasm =~ EMP12 + HOPF9 + HOPF8 + EMP7
+          climate_powerlessness =~ POWL11 + POWL7 + POWL2 + POWL13
+          climate_guilt =~ GUI11 + GUI6 + GUI8 + GUI12
+          climate_isolation =~ ISO4 + ISO5 + ISO8 + ISO12
+          climate_anxiety =~ APP7 + HOPL5 + HOPL11 + APP14
+          climate_sorrow =~ SOR13 + SOR6 + SOR4 + SOR14'
+```
+
+# Configural model
+In the first step for assessing cross-group equivalence of the ICE, let's test the configural (multigroup) model. We will do so by estimating the same CFA model for three countries respondents separately.
+
+We keep using the  Satorra-Bentler MLM estimator because, from previous steps, we know that the data deviates from normal distribution. Yet, there is no need to use the MLR because we have complete data.
+
+```{r, include=T, echo = T}
+model.configural <- cfa(model, data = multi_ice, estimator = "MLM", group = "country")
+```
+
+## Model characteristics {.tabset}
+
+### Fit indices
+
+Let's inspect the fit indices of the configural model.
+
+```{r, include=T, echo = F}
+lavaan::fitmeasures(model.configural, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+```
+
+Reasonably good fit is established when the (in our case) scaled CFI and TLI values are close to .95 or greater, RMSEA values are close to .06 or below, and SRMR values are close to or below .08 (Hu & Bentler, 1999). 
+
+Here, we observe reasonably good fit indices!
+
+### Factor Loadings
+
+Let's have a look now at the factor loadings and other relevant properties of the model across groups.
+
+```{r, include=T}
+lavaan::summary(model.configural, fit.measures = TRUE, standardized = TRUE)
+```
+
+Everything looks fine here.
+
+#### Summary
+
+We can conclude that both the number of factors and the pattern of their item loadings are similar across Norway, Ireland & Poland.
+
+In other words: we conclude that the factorial structure of the eight ICE subscales is optimally represented as an eight-factor model, with the pattern of factor loadings specified in accordance with the postulated configural model. We have the green light to test a more constrained model.
+
+# Metric model
+
+After having established the configural model, we can test for measurement equivalence or the so-called metric equivalence (in line with [Byrne, 2008](https://www.researchgate.net/profile/Barbara-M-Byrne/publication/23404381_Testing_for_multigroup_equivalence_of_a_measuring_instrument_A_walk_through_the_process/links/5cae3d4c299bf120975d5efa/Testing-for-multigroup-equivalence-of-a-measuring-instrument-A-walk-through-the-process.pdf "Byrne's paper")).
+
+To do this, we fix the factor loadings to be the same across the three countries.
+
+```{r, include=T, echo = T}
+model.metric <- cfa(model, data = multi_ice, estimator = "MLM", group = "country", group.equal = "loadings")
+```
+
+In testing for equivalence, the models of interest can be compared in pairs by computing the difference in their overall χ2 values and the related degrees of freedom (this is possible because the models are nested); the test is known as the Likelihood Ratio Test.
+
+```{r, include=F, echo = F}
+lmtest::lrtest(model.configural, model.metric)
+```
+
+Statistically significant value of the lrtest suggests that the constraints specified in the more restrictive model do not hold (i.e., the two models are not equivalent across groups). 
+
+Improtantly, as [Byrne (2008)](https://www.researchgate.net/profile/Barbara-M-Byrne/publication/23404381_Testing_for_multigroup_equivalence_of_a_measuring_instrument_A_walk_through_the_process/links/5cae3d4c299bf120975d5efa/Testing-for-multigroup-equivalence-of-a-measuring-instrument-A-walk-through-the-process.pdf "Byrne's paper") observed: *More recently, however, researchers (e.g., Cheung & Rensvold, 2002; Little, 1997) have argued that this Δχ2 value is an impractical and unrealistic criterion upon which to base evidence of equivalence. Thus, there has been a trend towards basing comparative models on the difference between the CFI values (ΔCFI or Δ scaled CFI) as a more practical approach to determining the extent to which models are equivalent. Following an extensive study of the properties of 20 goodness-of- fit indices within the context of invariance testing, Cheung and Rensvold (2002) arbitrarily suggested a ΔCFI (or Δ scaled CFI) difference value not exceeding 0.01.* 
+
+Let's stick to Cheung & Rensvold's guidelines and inspect the Δ*CFI between the two models:
+
+```{r, include=T, echo = T}
+lavaan::fitmeasures(model.configural, fit.measures = c("cfi.scaled")) - lavaan::fitmeasures(model.metric, fit.measures = c("cfi.scaled"))
+```
+It is < .01 as recommended by Cheung and Rensvold (2002).
+
+# Scalar model
+
+We now have the green light to test for scalar equivalence. This means that in addition to factor loadings, we will also constrain the intercepts to be equal across the three countries.
+
+```{r, include=T, echo = T}
+model.scalar <- cfa(model, data = multi_ice, estimator = "MLM", group = "country", group.equal = c("loadings", "intercepts"))
+```
+
+Let's have a look at the change in scaled CFI.
+
+```{r, include=T, echo = T}
+lavaan::fitmeasures(model.metric, fit.measures = c("cfi.scaled")) - lavaan::fitmeasures(model.scalar, fit.measures = c("cfi.scaled"))
+```
+
+Δ scaled CFI is .013 which is above the cutoff point of .01 recommended by Cheung and Rensvold (2002).
+
+We need to identify where the problem lies and deal with it. To do that, we will use the Lagrange Multiplier Test (LMTest), a multivariate test of equality. By looking at the p.value column, we can identify the parameters that are expected to have a significant impact on model fit (i.e., those with p< .05), and the values in the uni.X2 column give us an indication of the size of negative effect of given parameters on the equivalency of the model. Here, we order the results according to descending uni.X2.
+
+```{r, include=T, echo = T}
+troublemakers <-as.data.frame(lavTestScore(model.scalar))
+head(troublemakers[order(-troublemakers$uni.X2), ], 3)
+```
+
+We can see that there is a problem with p26 in relation to p166 and p306. We can identify what these parameters refer to in the original scalar model using the parTable() function.
+
+```{r, include=F, echo = F}
+parTable(model.scalar)
+```
+
+I will not print the output here because it is very long. 
+Nonetheless, in the RStudio console, I see that p26, p166 and p306 relate to non-equivalence in how climate anxiety is measured by item HOPL5 (in the lavaan syntax: climate_anxiety =~ HOPL5) across all three groups.
+
+To establish partial MI, we can adjust the model step by step, one change at at time, by freely estimating the parameters that negatively affect the model.
+
+Let's make the first change and see how it affects scaled CFI:
+
+```{r, include=T, echo = T}
+model.scalar2 <- cfa(model, data = multi_ice, estimator = "MLM", group = "country", group.equal = c("loadings","intercepts"), group.partial = c("climate_anxiety =~HOPL5"))
+
+lavaan::fitmeasures(model.metric, fit.measures = c("cfi.scaled")) - lavaan::fitmeasures(model.scalar2, fit.measures = c("cfi.scaled"))
+```
+
+Δ scaled CFI went down from .013 to .011 but we're still above the recommended cutoff point.
+
+Let's identify the next parameters to release.
+
+```{r, include=T}
+troublemakers <-as.data.frame(lavTestScore(model.scalar2))
+head(troublemakers[order(-troublemakers$uni.X2), ], 3)
+```
+
+```{r, include=F}
+parTable(model.scalar2)
+```
+
+The next in line is .p124. == .p264 which after the inspection of the output of the parTable() function tells us that the intercept for item ISO12 is different for Ireland in comparison to the benchmark group (Norway). Further inspection tells us that is also almost significantly different for Poland (in the lavaan syntax: ISO12 ~1). Let's free this parameter and see how the model fit changes.
+
+```{r, include=T, echo = T}
+model.scalar3 <- cfa(model, data = multi_ice, estimator = "MLM", group = "country", group.equal = c("loadings","intercepts"), group.partial = c("climate_anxiety =~HOPL5", "ISO12 ~ 1"))
+
+lavaan::fitmeasures(model.metric, fit.measures = c("cfi.scaled")) - lavaan::fitmeasures(model.scalar3, fit.measures = c("cfi.scaled"))
+```
+
+Δ scaled CFI went down from .011 to .009
+
+To sum up, after releasing the constraints on two parameters (climate_anxiety =~ HOPL5 and ISO12 ~1 across groups), **we established partial scalar equivalence** according to Cheung and Rensvold's criteria (2002). After having established partial scalar equivalence, we are free to go to compare the means across populations (Byrne, Shavelson, and Muthén 1989; Steenkamp and Baumgartner 1998).
+
+
+
+```{r, include=F}
+#A quick inspection of cross country differences
+
+## create a data frame with aggregate mean scores on climate emotions
+
+ice_selected.vector <- c(
+  "ANG14", "ANG13", "ANG10", "ANG3",
+  "DIS5", "DIS7", "IND2", "IND13",
+  "EMP12", "HOPF9", "HOPF8", "EMP7",
+  "POWL11", "POWL7", "POWL2", "POWL13",
+  "GUI11", "GUI6", "GUI8", "GUI12",
+  "ISO4", "ISO5", "ISO8", "ISO12",
+  "APP7", "HOPL5", "HOPL11", "APP14",
+  "SOR13", "SOR6", "SOR4", "SOR14", "country"
+)
+
+ice_selected.df <- multi_ice[ice_selected.vector]
+
+
+countries_emo <- data.frame(climate.anger = rowSums(multi_ice[1:4])/4, 
+                            climate.contempt = rowSums(multi_ice[5:8])/4,
+                            climate.enthusiasm = rowSums(multi_ice[9:12])/4,
+                            climate.powerlessness = rowSums(multi_ice[13:16])/4,
+                            climate.guilt = rowSums(multi_ice[17:20])/4,
+                            climate.isolation = rowSums(multi_ice[21:24])/4,
+                            climate.anxiety = rowSums(multi_ice[25:28])/4,
+                            climate.sorrow = rowSums(multi_ice[29:32])/4,
+                            country = as.factor(multi_ice$country)
+                          )
+
+
+## Visual inspection
+#change the format of the data
+countries_plot_df <- gather(countries_emo, emotion, value, climate.anger:climate.sorrow, factor_key=TRUE)
+
+library(paletteer)
+```
+
+```{r, include=F, echo = F}
+ggplot(countries_plot_df, aes(x=emotion, y=value, fill=country)) + 
+  #geom_boxplot() +
+  geom_violin(trim = T) +
+  geom_boxplot(width = .1, position=position_dodge(.9), outlier.shape = NA) +
+  stat_boxplot(geom ='errorbar', position=position_dodge(.9)) +
+  labs(title = "", x="", y = "Response") +
+  scale_x_discrete(labels = c('climate \nanger', 'climate \ncontempt', 'climate \nenthusiasm', 'climate \npowerlessness', 'climate \nguilt', 'climate \nisolation', 'climate \nanxiety', 'climate \nsorrow')) +
+  paletteer::scale_fill_paletteer_d("ggthemes::Purple_Pink_Gray",
+                  name="Country",
+                  #breaks=c("2", "3"),
+                  labels=c("Norway", "Ireland", "Poland")) +
+  theme_classic() +
+  theme(axis.text.x = element_text(size=12)) +
+  theme(axis.text.y = element_text(size=12)) +
+  theme(legend.title = element_text(size=14, face="bold")) +
+  theme(legend.text = element_text(size = 12)) +
+  theme(legend.position="bottom") +
+  scale_y_continuous(breaks = seq(0,5,1), limits=c(1, 5.3))  
+  
+#scale_fill_grey(start = 1,
+#                end = .6,
+
+#https://pmassicotte.github.io/paletteer_gallery/
+
+```
+
+
+# Note
+This html output presents the general logic of the analysis along with some results not outlined in the main body of the manuscript. Please note that the full R code for the data cleaning and data analysis is available in the supplementary materials on the accompanying OSF website.

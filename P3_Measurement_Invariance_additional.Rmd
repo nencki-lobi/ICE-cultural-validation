@@ -1,0 +1,729 @@
+---
+title: "Additional analyses - measurement equivalence"
+author: "Michalina Marczak"
+date: '2022-11-14'
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F)
+```
+
+```{r, include=F}
+#set the global options
+options(max.print=999999)  #allows printing out large outputs
+options(scipen = 999)     #disables scientific notation (uses decimal instead)      
+set.seed(9999) # set seed for replicability
+
+####### libraries
+library(tidyverse)
+library(lavaan)
+library(lmtest)
+```
+
+```{r, include=F}
+#Combine the data for each country in one dataframe, including also the demographics
+
+#Norway
+load(Sys.readlink("./NO/dataset-Norway.RData"))
+
+#ICE data
+norway_ice <- dplyr::select(qdata, starts_with("ICE-60-"))
+norway_ice <- as.data.frame(norway_ice)
+norway_ice <- as.data.frame(lapply(norway_ice, as.numeric)) #change the variables type from character to numeric (keeping them in the data frame format)
+norway_ice <- norway_ice + 1 # For the descriptives, the response format should be 1-5 not 0-4, hence we add 1 to each value in the data frame
+
+names(norway_ice) <- sub("ICE.60.no.", "", names(norway_ice)) # Here I remove part of the name that makes the variable names differ
+
+norway_ice$country <- rep("Norway", length(norway_ice$ANG14)) # add a column with country name
+
+#### demographics
+dems <- dplyr::select(qdata, starts_with("demo"))
+dems <- as.data.frame(dems)
+
+#rename the variables so that it's easier to navigate
+colnames(dems) <- c("cc_concern", "gender", "yearOfbirth", "country", "language1", "area", "education", "any_views", "any_l_r", "perceived_SES", "second_lang", "edu_other_specify", "politicalViews", "gender_other_specify")
+
+##create a vector with age rather than year of birth
+age <- 2022 - as.numeric(dems$yearOfbirth)
+
+#select relevant variables only
+dems <- dems %>% 
+  select(cc_concern, gender)
+
+#put all the relevant variables together in one data frame
+all_nor <- cbind(norway_ice, dems, age)
+
+# add a column with division into age groups
+all_nor["age_group"] <- cut(all_nor$age, c(0, 23, 35, 55, Inf), c("genZ", "millennial", "genX", "boomer"), include.lowest=TRUE)
+
+
+#Ireland
+load(Sys.readlink("./EN/dataset-Ireland.RData"))
+ireland_ice <- dplyr::select(qdata, starts_with("ICE-60-en"))
+ireland_ice <- as.data.frame(ireland_ice)
+ireland_ice <- as.data.frame(lapply(ireland_ice, as.numeric)) #change the variables type from character to numeric (keeping them in the data frame format)
+ireland_ice <- ireland_ice + 1 # For the descriptives, the response format should be 1-5 not 0-4, hence we add 1 to each value in the data frame
+
+names(ireland_ice) <- sub("ICE.60.en.", "", names(ireland_ice)) # Here I remove part of the name that makes the variable names differ
+
+ireland_ice$country <- rep("Ireland", length(ireland_ice$ANG14)) # add a column with country name
+
+#### demographics
+dems <- dplyr::select(qdata, starts_with("demo"))
+dems <- as.data.frame(dems)
+
+#rename the variables so that it's easier to navigate
+colnames(dems) <- c("cc_concern", "gender", "yearOfbirth", "country", "language1", "language2", "area", "education", "any_views", "any_l_r", "politicalViews", "perceived_SES", "edu_other_specify")
+
+##create a vector with age rather than year of birth
+age <- 2022 - as.numeric(dems$yearOfbirth)
+
+#select relevant variables only
+dems <- dems %>% 
+  select(cc_concern, gender)
+
+#put all the relevant variables together in one data frame
+all_irl <- cbind(ireland_ice, dems, age)
+
+# add a column with division into age groups
+all_irl["age_group"] <- cut(all_irl$age, c(0, 23, 35, 55, Inf), c("genZ", "millennial", "genX", "boomer"), include.lowest=TRUE)
+
+
+#Poland
+load("./PL/dataset-Poland.RData")
+poland_ice <- dplyr::select(qdata, starts_with("ICE-60-pl"))
+poland_ice <- as.data.frame(poland_ice)
+poland_ice <- as.data.frame(lapply(poland_ice, as.numeric)) #change the variables type from character to numeric (keeping them in the data frame format)
+poland_ice <- poland_ice + 1 # For the descriptives, the response format should be 1-5 not 0-4, hence we add 1 to each value in the data frame
+
+names(poland_ice) <- sub("ICE.60.pl.", "", names(poland_ice)) # Here I remove part of the name that makes the variable names differ
+
+poland_ice$country <- rep("Poland", length(poland_ice$ANG14)) # add a column with country name
+
+#### demographics
+dems <- dplyr::select(qdata, starts_with("demo"))
+dems <- as.data.frame(dems)
+
+#rename the variables so that it's easier to navigate
+colnames(dems) <- c("cc_concern", "gender", "yearOfbirth", "country", "language1", "area", "education", "any_views", "any_l_r", "perceived_SES", "politicalViews", "second_lang", "edu_other_specify", "gender_other_specify")
+
+##create a vector with age rather than year of birth
+age <- 2022 - as.numeric(dems$yearOfbirth)
+
+#select relevant variables only
+dems <- dems %>% 
+  select(cc_concern, gender)
+
+#put all the relevant variables together in one data frame
+all_pl <- cbind(poland_ice, dems, age)
+
+# add a column with division into age groups
+all_pl["age_group"] <- cut(all_pl$age, c(0, 23, 35, 55, Inf), c("genZ", "millennial", "genX", "boomer"), include.lowest=TRUE)
+
+
+## Merge the dataframes 
+df_list <- list(all_nor, all_irl, all_pl)
+all <- df_list %>% 
+  reduce(full_join)
+```
+
+# General model specification
+
+This is the measurement model validated in the previous steps:
+
+```{r, include=T, echo = T}
+model <- 'climate_anger =~ ANG14 + ANG13 + ANG10 + ANG3
+          climate_contempt =~ DIS5 + DIS7 + IND2 + IND13
+          climate_enthusiasm =~ EMP12 + HOPF9 + HOPF8 + EMP7
+          climate_powerlessness =~ POWL11 + POWL7 + POWL2 + POWL13
+          climate_guilt =~ GUI11 + GUI6 + GUI8 + GUI12
+          climate_isolation =~ ISO4 + ISO5 + ISO8 + ISO12
+          climate_anxiety =~ APP7 + HOPL5 + HOPL11 + APP14
+          climate_sorrow =~ SOR13 + SOR6 + SOR4 + SOR14'
+```
+
+Across models, I will keep using the MLM estimator because the ICE data deviates significantly from multi- and uni-variate normal distribution.
+
+# Measurement equivalence: genders 
+
+```{r, include=F}
+#inspect
+table(all$gender)
+
+#The subsample "other" is too small (n = 2) to be included in the analysis, let's focus on men (554) and women (720)
+all <- all[-c(which(all$gender==2)), ]   #remove gender = 2 (other)
+```
+
+I will focus on inspecting measurement equivalence for men and women, as the group "other" is very small (n = 2).
+
+## Separate measurement models {.tabset}
+
+I start from inspecting the models for the two genders separately.
+
+### CFA women
+
+```{r, include=F}
+#women
+all.fem <- all %>% 
+  dplyr::filter(gender == 0)
+
+model.basic.fem <- cfa(model, data = all.fem, estimator = "MLM")
+```
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic.fem, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic.fem, fit.measures = TRUE, standardized = TRUE)
+```
+
+Very good model fit and factor loadings!
+
+### CFA men
+
+```{r, include=F}
+#women
+all.male <- all %>% 
+  dplyr::filter(gender == 1)
+
+model.basic.male <- cfa(model, data = all.male, estimator = "MLM")
+```
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic.male, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+lavaan::summary(model.basic.male, fit.measures = TRUE, standardized = TRUE)
+
+```
+
+Also for men: very good model fit and factor loadings!
+
+
+## Configural model {.tabset}
+
+Because the models worked well for the two genders separately, I specify the configural model for both genders at the same time:
+
+```{r, include=T, echo  = T}
+model.configural <- cfa(model, data = all, estimator = "MLM", group = "gender")
+```
+
+Here are the details of the model:
+
+### fit indices:
+
+```{r, include=T}
+lavaan::fitmeasures(model.configural, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+```
+
+In sum, they indicate very good model fit
+
+### factor loadings etc
+
+```{r, include=T}
+lavaan::summary(model.configural, fit.measures = TRUE, standardized = TRUE)
+```
+
+We observe good values here too.
+
+## Metric model
+
+Now, time to constrain factor loadings to be equal for both groups:
+
+```{r, include=T, echo=T}
+model.metric <- cfa(model, data = all, estimator = "MLM", group = "gender", group.equal = "loadings")
+```
+
+Let's inspect the change in the scaled CFI in line with Cheung & Rensvold's (2002) criteria presented in the paper.
+
+```{r, include=T}
+lavaan::fitmeasures(model.configural, fit.measures = c("cfi.scaled")) - lavaan::fitmeasures(model.metric, fit.measures = c("cfi.scaled"))  
+```
+
+No change, very strong evidence for metric equivalence
+
+## Scalar model
+
+Now, we can move on to constraining both loading and intercepts across genders:
+
+```{r, include=T, echo = T}
+model.scalar <- cfa(model, data = all, estimator = "MLM", group = "gender", group.equal = c("loadings", "intercepts"))
+```
+
+Let's have a look at the change in the scaled CFI in comparison to the metric model:
+```{r, include=T}
+lavaan::fitmeasures(model.metric, fit.measures = c("cfi.scaled")) - lavaan::fitmeasures(model.scalar, fit.measures = c("cfi.scaled"))
+```
+
+It is way below the recommended cutoff point of .01.
+
+We have established full scalar equivalence for the ICE between genders.
+
+
+# Measurement equivalence: age groups
+
+Let's inspect what age groups there are in our pooled dataset and how big they are:
+
+```{r, include=T}
+table(all$age_group)
+```
+
+## Separate measurement models {.tabset}
+
+I start from inspecting separate models for these age groups.
+
+### CFA generation Z
+
+```{r, include=T}
+all.genZ <- all %>% 
+  dplyr::filter(age_group == "genZ")
+
+model.basic.genZ <- cfa(model, data = all.genZ, estimator = "MLM")
+```
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic.genZ, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic.genZ, fit.measures = TRUE, standardized = TRUE)
+```
+
+<span style="color: red;"> When fitting the model, we get a warning "covariance matrix of latent variables is not positive definite", which in our case is related to the small sample size of the gen z group. Let's try to repeat the model fitting procedure after excluding generation z from the analysis. </span>
+
+### CFA millenials
+
+```{r, include=T}
+all.millennial <- all %>% 
+  dplyr::filter(age_group == "millennial")
+
+model.basic.millenial <- cfa(model, data = all.millennial, estimator = "MLM")
+```
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic.millenial, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic.millenial, fit.measures = TRUE, standardized = TRUE)
+```
+
+Model fit indices and factor loadings look very good here.
+
+
+### CFA generation X
+
+```{r, include=T}
+all.genX <- all %>% 
+  dplyr::filter(age_group == "genX")
+
+model.basic.genX <- cfa(model, data = all.genX, estimator = "MLM")
+```
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic.genX, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic.genX, fit.measures = TRUE, standardized = TRUE)
+```
+
+Model fit and factor loadings look good for this group.
+
+### CFA baby boomers
+
+```{r, include=T}
+all.boomer <- all %>% 
+  dplyr::filter(age_group == "boomer")
+
+model.basic.boomer <- cfa(model, data = all.boomer, estimator = "MLM")
+```
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic.boomer, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic.boomer, fit.measures = TRUE, standardized = TRUE)
+```
+
+Factor loading for POWL2 is below .4.
+
+## Re-specifications {.tabset}
+
+Here is the CFA after excluding generation Z: 
+
+```{r, include=T}
+## drop Gen Z
+
+all_NoGenZ <- all %>% 
+  dplyr::filter(!age_group == "genZ")
+
+all_NoGenZ$age_group <- gdata::drop.levels(all_NoGenZ$age_group)
+```
+
+In addition, in the initial analysis, factor loading of one of the indicators of powerlessness (POWL2) was < . 4 for baby boomers. I will therefore respecify the model without this indicator.
+
+The respecified model looks like this:
+```{r, include=T, echo = T}
+model.respecified <- 'climate_anger =~ ANG14 + ANG13 + ANG10 + ANG3
+          climate_contempt =~ DIS5 + DIS7 + IND2 + IND13
+          climate_enthusiasm =~ EMP12 + HOPF9 + HOPF8 + EMP7
+          climate_powerlessness =~ POWL11 + POWL7 + POWL13
+          climate_guilt =~ GUI11 + GUI6 + GUI8 + GUI12
+          climate_isolation =~ ISO4 + ISO5 + ISO8 + ISO12
+          climate_anxiety =~ APP7 + HOPL5 + HOPL11 + APP14
+          climate_sorrow =~ SOR13 + SOR6 + SOR4 + SOR14'
+```
+
+Let's inspect the seperate models after the respecification:
+
+### CFA millenials
+
+```{r, include=T}
+all.millennial <- all %>% 
+  dplyr::filter(age_group == "millennial")
+
+model.basic.millenial <- cfa(model.respecified, data = all.millennial, estimator = "MLM")
+```
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic.millenial, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic.millenial, fit.measures = TRUE, standardized = TRUE)
+```
+
+Very good indicators of model fit. Good factor loadings.
+
+### CFA generation X
+
+```{r, include=T}
+all.genX <- all %>% 
+  dplyr::filter(age_group == "genX")
+
+model.basic.genX <- cfa(model.respecified, data = all.genX, estimator = "MLM")
+```
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic.genX, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic.genX, fit.measures = TRUE, standardized = TRUE)
+```
+
+Model fit and factor loadings look good for this group.
+
+### CFA baby boomers
+
+```{r, include=T}
+all.boomer <- all %>% 
+  dplyr::filter(age_group == "boomer")
+
+model.basic.boomer <- cfa(model.respecified, data = all.boomer, estimator = "MLM")
+```
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic.boomer, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic.boomer, fit.measures = TRUE, standardized = TRUE)
+```
+
+Everything looks good for the baby boomers too.
+
+## Configural model {.tabset}
+
+Because the models worked well for the three age groups separately, let's specify the configural model for all groups at the same time:
+
+```{r, include=T, echo  = T}
+model.configural <- cfa(model.respecified, data = all_NoGenZ, estimator = "MLM", group = "age_group")
+```
+
+Here are the details of the model:
+
+### fit indices:
+
+```{r, include=T}
+lavaan::fitmeasures(model.configural, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+```
+
+Very good fit indices.
+
+### factor loadings etc
+
+```{r, include=T}
+lavaan::summary(model.configural, fit.measures = TRUE, standardized = TRUE)
+```
+
+We observe good values here too.
+
+## Metric model
+
+Now, time to constrain factor loadings to be equal for all groups:
+
+```{r, include=T, echo=T}
+model.metric <- cfa(model.respecified, data = all_NoGenZ, estimator = "MLM", group = "age_group", group.equal = "loadings")
+```
+
+Let's inspect the change in the scaled CFI:
+
+```{r, include=T}
+lavaan::fitmeasures(model.configural, fit.measures = c("cfi.scaled")) - lavaan::fitmeasures(model.metric, fit.measures = c("cfi.scaled"))  
+```
+
+Δ*CFI < .01, we have evidence for metric equivalence
+
+## Scalar model
+
+Let's now constrain both loadings and intercepts across age groups:
+
+```{r, include=T, echo = T}
+model.scalar <- cfa(model.respecified, data = all_NoGenZ, estimator = "MLM", group = "age_group", group.equal = c("loadings", "intercepts"))
+```
+
+Let's have a look at the change in the scaled CFI in comparison to the metric model:
+```{r, include=T}
+lavaan::fitmeasures(model.metric, fit.measures = c("cfi.scaled")) - lavaan::fitmeasures(model.scalar, fit.measures = c("cfi.scaled"))
+```
+
+Δ*CFI < .01, we have evidence for scalar equivalence of the respecified model across age groups.
+
+
+
+# Measurement equivalence: climate concern
+
+Let's inspect what climate concern groups there are in our pooled dataset and how big they are:
+
+```{r, include=T}
+table(all$cc_concern)
+```
+
+[0 - “Not at all concerned”, 1 - “Not very concerned”, 2 - “Somewhat concerned”, 3 - “Very concerned”, 4 - “Extremely concerned”]
+
+Let's merge the groups “Not at all concerned” and “"Not very concerned” so that the subsample of rather unconcerned people is bigger. And let's do the same for "very concerned" and "extremely concerned", otherwise the extremely concerned group would be unreliably small for this analysis.
+
+```{r, include=T, echo = T}
+all$cc_concern <- as.factor(all$cc_concern)
+
+levels(all$cc_concern)[levels(all$cc_concern)=="0"] <-"1" #merge “Not at all concerned” and “"Not very concerned”
+
+levels(all$cc_concern)[levels(all$cc_concern)=="4"] <-"3" #merge "very concerned" and "extremely concerned"
+```
+
+
+## Separate measurement models {.tabset}
+
+I start from inspecting separate models for the three levels of climate change concern.
+
+### CFA: Low level of concern
+
+```{r, include=T}
+all.cc <- all %>% 
+  dplyr::filter(cc_concern == "1")
+
+model.basic <- cfa(model, data = all.cc, estimator = "MLM")
+```
+
+
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic, fit.measures = TRUE, standardized = TRUE)
+```
+
+We observe good fit indices but IND12 and ISO4 have factor loadings below .4 (.351 and .393, respectively)
+
+
+### CFA: Medium level of concern
+
+```{r, include=T}
+all.cc <- all %>% 
+  dplyr::filter(cc_concern == "2")
+
+model.basic <- cfa(model, data = all.cc, estimator = "MLM")
+```
+
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic, fit.measures = TRUE, standardized = TRUE)
+```
+
+Everything looks ok here too.
+
+### CFA: High level of concern
+
+```{r, include=T}
+all.cc <- all %>% 
+  dplyr::filter(cc_concern == "3")
+
+model.basic <- cfa(model, data = all.cc, estimator = "MLM")
+```
+
+
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic, fit.measures = TRUE, standardized = TRUE)
+```
+
+Acceptable fit indices. All factor loadings > .4.
+
+## Re-specifications {.tabset}
+
+Let's respecify the model without the troublesome indicators IND13 and ISO4.
+
+The respecified model looks like this:
+```{r, include=T, echo = T}
+model.respecified <- 'climate_anger =~ ANG14 + ANG13 + ANG10 + ANG3
+          climate_contempt =~ DIS5 + DIS7 + IND2
+          climate_enthusiasm =~ EMP12 + HOPF9 + HOPF8 + EMP7
+          climate_powerlessness =~ POWL11 + POWL7 + POWL2 + POWL13
+          climate_guilt =~ GUI11 + GUI6 + GUI8 + GUI12
+          climate_isolation =~ ISO5 + ISO8 + ISO12
+          climate_anxiety =~ APP7 + HOPL5 + HOPL11 + APP14
+          climate_sorrow =~ SOR13 + SOR6 + SOR4 + SOR14'
+```
+
+Let's inspect the seperate models after the respecification:
+
+### CFA: Low level of concern
+
+```{r, include=T}
+all.cc <- all %>% 
+  dplyr::filter(cc_concern == "1")
+
+model.basic <- cfa(model.respecified, data = all.cc, estimator = "MLM")
+```
+
+
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic, fit.measures = TRUE, standardized = TRUE)
+```
+
+Reasonably good fit indices. All factor loadings are now above .4.
+
+
+### CFA: Medium level of concern
+
+```{r, include=T}
+all.cc <- all %>% 
+  dplyr::filter(cc_concern == "2")
+
+model.basic <- cfa(model.respecified, data = all.cc, estimator = "MLM")
+```
+
+
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic, fit.measures = TRUE, standardized = TRUE)
+```
+
+We see reasonably good fit indices. All factor loadings are above the customary cutoff point.
+
+### CFA: High level of concern
+
+```{r, include=T}
+all.cc <- all %>% 
+  dplyr::filter(cc_concern == "3")
+
+model.basic <- cfa(model.respecified, data = all.cc, estimator = "MLM")
+```
+
+
+```{r, include=T}
+lavaan::fitmeasures(model.basic, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+
+lavaan::summary(model.basic, fit.measures = TRUE, standardized = TRUE)
+```
+
+Here too: reasonably good fit indices. All factor loadings are above the customary cutoff point.
+
+## Configural model {.tabset}
+
+Because the separate models are acceptable for the three climate change concern groups, let's specify the configural model for all groups at the same time:
+
+```{r, include=T, echo  = T}
+model.configural <- cfa(model.respecified, data = all, estimator = "MLM", group = "cc_concern")
+```
+
+Here are the details of the model:
+
+### fit indices:
+
+```{r, include=T}
+lavaan::fitmeasures(model.configural, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+```
+
+We got reasonably good fit indices.
+
+### factor loadings etc
+
+```{r, include=T}
+lavaan::summary(model.configural, fit.measures = TRUE, standardized = TRUE)
+```
+
+We observe good values here too.
+
+
+
+## Metric model
+
+Now, time to constrain factor loadings to be equal for all climate change concern groups:
+
+```{r, include=T, echo=T}
+model.metric <- cfa(model.respecified, data = all, estimator = "MLM", group = "cc_concern", group.equal = "loadings")
+```
+
+Let's inspect the change in the scaled CFI:
+
+```{r, include=T}
+lavaan::fitmeasures(model.configural, fit.measures = c("cfi.scaled")) - lavaan::fitmeasures(model.metric, fit.measures = c("cfi.scaled"))  
+```
+
+Δ*CFI < .01, we have evidence for metric equivalence
+
+## Scalar model
+
+Let's now constrain both loadings and intercepts across the three groups:
+
+```{r, include=T, echo = T}
+model.scalar <- cfa(model.respecified, data = all, estimator = "MLM", group = "cc_concern", group.equal = c("loadings", "intercepts"))
+```
+
+Let's have a look at the change in the scaled CFI in comparison to the metric model:
+```{r, include=T}
+lavaan::fitmeasures(model.metric, fit.measures = c("cfi.scaled")) - lavaan::fitmeasures(model.scalar, fit.measures = c("cfi.scaled"))
+```
+
+Δ*CFI = .011, we are close to establishing scalar equivalence of the respecified model across climate change concern groups but we can see that something is wrong. We can identify the problem using the Lagrange Multiplier Test (LMTest). By looking at the p.value column, we can identify the parameters that are expected to have a significant impact on model fit (i.e., those with p < .05), and the values in the uni.X2 column give us an indication of the size of negative effect of given parameters on the equivalency of the model. Let's order the results according to descending uni.X2.
+
+```{r, include=T, echo = T, warning = FALSE, message = FALSE}
+troublemakers <- as.data.frame(lavTestScore(model.scalar))
+head(troublemakers[order(-troublemakers$uni.X2), ], 1)
+```
+
+We can see that the biggest problem is with p108 in relation to p242. We can identify what these parameters refer to in the original scalar model using the parTable() function. I won't print it here because it's very long.
+
+```{r, include=F, echo = F}
+parTable(model.scalar)
+```
+
+The output tells us that the constraint POWL11~1 does not hold for group 2. Let's try to release it. 
+
+```{r, include=T, echo = T}
+model.scalar2 <- cfa(model.respecified, data = all, estimator = "MLM", group = "cc_concern", group.equal = c("loadings", "intercepts"), group.partial = c("POWL11~1"))
+
+lavaan::fitmeasures(model.metric, fit.measures = c("cfi.scaled")) - lavaan::fitmeasures(model.scalar2, fit.measures = c("cfi.scaled"))
+```
+
+Δ*CFI = .009 < the cutoff value of .01. We have established partial scalar equivalence of the slightly respecified model across different levels of climate change concern.
+
+
+# Summary
+In the present research we have demonstrated that using the Inventory of Climate Emotions it is possible to measure the same constructs across various groups with very few deviations from the original formulation of the scale. Our series of increasingly constrained factor analyses across (1) three European countries, (2) two genders, (3) three age groups and (4) three groups reporting different levels of climate change concern lends further support for the validity of the ICE.
+
+
+
+# Note
+This html output presents the general logic of the analysis along with some results not outlined in the main body of the manuscript. Please note that the full R code for the data cleaning and data analysis is available in the supplementary materials on the accompanying OSF website.

@@ -1,0 +1,640 @@
+---
+title: "Cross-Cultural Validation of the ICE: Ireland"
+author: "Michalina Marczak"
+date: "Last compiled on `r format(Sys.time(), '%d %B, %Y')`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: false
+    fig_width: 8
+    fig_height: 8
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE)
+```
+
+```{r, include=F}
+#set the global options
+options(max.print=999999)  #allows printing out large outputs
+options(scipen = 999)       #disables scientific notation (uses decimal instead)      
+set.seed(9999) # set seed for replicability
+
+
+####### load the libraries
+library(tidyverse)
+library(lavaan)
+library(psych)
+library(mvnormalTest)
+library(astatur)
+
+# load the custom functions
+condisc <- function(x){
+  std.loadings<- inspect(x, what="std")$lambda
+  #std.loadings
+  std.loadings[std.loadings==0] <- NA
+  #std.loadings
+  std.loadings <- std.loadings^2
+  #std.loadings
+  ave <- colMeans(std.loadings, na.rm=TRUE)
+  #ave
+  #factor correlation matrix
+  fcor <- lavInspect(x, "cor.lv")
+  #fcor
+  sqfcor <- fcor^2
+  #sqfcor
+  list(Squared_Factor_Correlation=round(sqfcor, digits=3),
+       Average_Variance_Extracted=round(ave, digits=3))
+}
+
+
+### I'm using the custom correlation_matrix and save_correlation_matrix functions from Paul van der Laken
+### https://paulvanderlaken.com/2020/07/28/publication-ready-correlation-matrix-significance-r/#correlation_matrix
+
+#' correlation_matrix
+#' Creates a publication-ready / formatted correlation matrix, using `Hmisc::rcorr` in the backend.
+#'
+#' @param df dataframe; containing numeric and/or logical columns to calculate correlations for
+#' @param type character; specifies the type of correlations to compute; gets passed to `Hmisc::rcorr`; options are `"pearson"` or `"spearman"`; defaults to `"pearson"`
+#' @param digits integer/double; number of decimals to show in the correlation matrix; gets passed to `formatC`; defaults to `3`
+#' @param decimal.mark character; which decimal.mark to use; gets passed to `formatC`; defaults to `.`
+#' @param use character; which part of the correlation matrix to display; options are `"all"`, `"upper"`, `"lower"`; defaults to `"all"`
+#' @param show_significance boolean; whether to add `*` to represent the significance levels for the correlations; defaults to `TRUE`
+#' @param replace_diagonal boolean; whether to replace the correlations on the diagonal; defaults to `FALSE`
+#' @param replacement character; what to replace the diagonal and/or upper/lower triangles with; defaults to `""` (empty string)
+#'
+#' @return a correlation matrix
+#' @export
+#'
+#' @examples
+#' `correlation_matrix(iris)`
+#' `correlation_matrix(mtcars)`
+correlation_matrix <- function(df, 
+                               type = "pearson",
+                               digits = 3, 
+                               decimal.mark = ".",
+                               use = "all", 
+                               show_significance = TRUE, 
+                               replace_diagonal = FALSE, 
+                               replacement = ""){
+  
+  # check arguments
+  stopifnot({
+    is.numeric(digits)
+    digits >= 0
+    use %in% c("all", "upper", "lower")
+    is.logical(replace_diagonal)
+    is.logical(show_significance)
+    is.character(replacement)
+  })
+  # we need the Hmisc package for this
+  require(Hmisc)
+  
+  # retain only numeric and boolean columns
+  isNumericOrBoolean = vapply(df, function(x) is.numeric(x) | is.logical(x), logical(1))
+  if (sum(!isNumericOrBoolean) > 0) {
+    cat('Dropping non-numeric/-boolean column(s):', paste(names(isNumericOrBoolean)[!isNumericOrBoolean], collapse = ', '), '\n\n')
+  }
+  df = df[isNumericOrBoolean]
+  
+  # transform input data frame to matrix
+  x <- as.matrix(df)
+  
+  # run correlation analysis using Hmisc package
+  correlation_matrix <- Hmisc::rcorr(x, type = type)
+  R <- correlation_matrix$r # Matrix of correlation coeficients
+  p <- correlation_matrix$P # Matrix of p-value 
+  
+  # transform correlations to specific character format
+  Rformatted = formatC(R, format = 'f', digits = digits, decimal.mark = decimal.mark)
+  
+  # if there are any negative numbers, we want to put a space before the positives to align all
+  if (sum(!is.na(R) & R < 0) > 0) {
+    Rformatted = ifelse(!is.na(R) & R > 0, paste0(" ", Rformatted), Rformatted)
+  }
+  
+  # add significance levels if desired
+  if (show_significance) {
+    # define notions for significance levels; spacing is important.
+    stars <- ifelse(is.na(p), "", ifelse(p < .001, "***", ifelse(p < .01, "**", ifelse(p < .05, "*", ""))))
+    Rformatted = paste0(Rformatted, stars)
+  }
+  
+  # make all character strings equally long
+  max_length = max(nchar(Rformatted))
+  Rformatted = vapply(Rformatted, function(x) {
+    current_length = nchar(x)
+    difference = max_length - current_length
+    return(paste0(x, paste(rep(" ", difference), collapse = ''), sep = ''))
+  }, FUN.VALUE = character(1))
+  
+  # build a new matrix that includes the formatted correlations and their significance stars
+  Rnew <- matrix(Rformatted, ncol = ncol(x))
+  rownames(Rnew) <- colnames(Rnew) <- colnames(x)
+  
+  # replace undesired values
+  if (use == 'upper') {
+    Rnew[lower.tri(Rnew, diag = replace_diagonal)] <- replacement
+  } else if (use == 'lower') {
+    Rnew[upper.tri(Rnew, diag = replace_diagonal)] <- replacement
+  } else if (replace_diagonal) {
+    diag(Rnew) <- replacement
+  }
+  
+  return(Rnew)
+}
+
+
+#' save_correlation_matrix
+#' Creates and save to file a fully formatted correlation matrix, using `correlation_matrix` and `Hmisc::rcorr` in the backend
+#' @param df dataframe; passed to `correlation_matrix`
+#' @param filename either a character string naming a file or a connection open for writing. "" indicates output to the console; passed to `write.csv`
+#' @param ... any other arguments passed to `correlation_matrix`
+#'
+#' @return NULL
+#'
+#' @examples
+#' `save_correlation_matrix(df = iris, filename = 'iris-correlation-matrix.csv')`
+#' `save_correlation_matrix(df = mtcars, filename = 'mtcars-correlation-matrix.csv', digits = 3, use = 'lower')`
+save_correlation_matrix = function(df, filename, ...) {
+  return(write.csv2(correlation_matrix(df, ...), file = filename))
+}
+
+condisc <- function(x){
+  std.loadings<- inspect(x, what="std")$lambda
+  #std.loadings
+  std.loadings[std.loadings==0] <- NA
+  #std.loadings
+  std.loadings <- std.loadings^2
+  #std.loadings
+  ave <- colMeans(std.loadings, na.rm=TRUE)
+  #ave
+  #factor correlation matrix
+  fcor <- lavInspect(x, "cor.lv")
+  #fcor
+  sqfcor <- fcor^2
+  #sqfcor
+  list(Squared_Factor_Correlation=round(sqfcor, digits=3),
+       Average_Variance_Extracted=round(ave, digits=3))
+}
+```
+
+
+```{r, include=F}
+### Load the data
+load(Sys.readlink("./EN/dataset-Ireland.RData"))
+```
+
+## Inspection of the climate emotions data
+
+```{r, include=F}
+##### subset the data for the CFA
+
+#subset the data frame to work with for now
+data.for.CFA <- dplyr::select(qdata, starts_with("ICE-60-en"))
+ICE_data <- as.data.frame(data.for.CFA)
+
+#change the variables type from character to numeric (keeping them in the data frame format)
+ICE_data <- as.data.frame(lapply(ICE_data, as.numeric))
+
+####explore & inspect the ICE data for consistency
+#is there any missing data?
+sum(colSums(is.na(ICE_data)))  # no missing data
+
+#a categorical representation of the ICE data to check for inconsistent values
+lapply(ICE_data, table)
+
+# For the descriptives, the response format should be 1-5 not 0-4, hence we add 1 to each value in the data frame
+ICE_data <- ICE_data + 1
+
+# overview of the data
+psych::describe(ICE_data)
+```
+
+### Multi- & uni-variate normality check
+
+In the first step, let's check whether the data meets the assumptions of multi- and univariate normality using Mardia’s test for multivariate skewness and kurtosis and Shapiro-Wilk test for univariate normality.
+
+```{r, include=T}
+mvnormalTest::mardia(ICE_data, std = TRUE)
+# the values imply very clearly that we should reject the null hypothesis of uni & multivariate normality
+```
+
+
+
+```{r, include=F}
+#### Visual inspection
+theme_set(
+  theme_minimal() +
+    theme(legend.position = "top")
+)
+
+ICE.gathered <- ICE_data %>%
+  as_tibble() %>%
+  select_if(is.numeric) %>%
+  gather(key = "variable", value = "value")
+
+ggplot(ICE.gathered, aes(value)) +
+  geom_density(fill = "lightgrey") +
+  facet_wrap(~variable)
+```
+
+## Confirmatory Factor Analysis
+
+We conduct the CFA with the Satorra-Bentler MLM because the data deviates significantly from normal distribution. Yet, there is no need to use MLR because we have complete data.
+
+### Model specification
+
+First, we specify the model based on the results from Marczak et al., 2022
+
+```{r, include=T, echo = T}
+model <- 'climate_anger =~ ICE.60.en.ANG14 + ICE.60.en.ANG13 + ICE.60.en.ANG10 + ICE.60.en.ANG3
+          climate_contempt =~ ICE.60.en.DIS5 + ICE.60.en.DIS7 + ICE.60.en.IND2 + ICE.60.en.IND13
+          climate_enthusiasm =~ ICE.60.en.EMP12 + ICE.60.en.HOPF9 + ICE.60.en.HOPF8 + ICE.60.en.EMP7
+          climate_powerlessness =~ ICE.60.en.POWL11 + ICE.60.en.POWL7 + ICE.60.en.POWL2 + ICE.60.en.POWL13
+          climate_guilt =~ ICE.60.en.GUI11 + ICE.60.en.GUI6 + ICE.60.en.GUI8 + ICE.60.en.GUI12
+          climate_isolation =~ ICE.60.en.ISO4 + ICE.60.en.ISO5 + ICE.60.en.ISO8 + ICE.60.en.ISO12
+          climate_anxiety =~ ICE.60.en.APP7 + ICE.60.en.HOPL5 + ICE.60.en.HOPL11 + ICE.60.en.APP14
+          climate_sorrow =~ ICE.60.en.SOR13 + ICE.60.en.SOR6 + ICE.60.en.SOR4 + ICE.60.en.SOR14'
+```
+
+In the next step, we fit the model with the MLM estimator
+
+```{r, include=T, echo = T}
+model.fit <- cfa(model, data = ICE_data, estimator = "MLM")
+```
+
+### Fit indices
+
+We inspect the standard indices for model fit
+
+```{r, include=T}
+fitmeasures(model.fit, fit.measures = c("chisq.scaled", "pvalue.scaled", "df.scaled", "cfi.scaled", "tli.scaled", "rmsea.scaled", "rmsea.ci.lower.scaled", "rmsea.ci.upper.scaled", "srmr"))
+```
+
+Reasonably good fit is established by a model when the (in our case scaled) CFI and TLI values are close to .95 or greater, RMSEA values are close to .06 or below, and SRMR values are close to or below .08 (Hu & Bentler, 1999). 
+
+We can see that our model presents reasonably good fit.
+
+### Model characteristics {.tabset}
+
+#### Facor loadings, variances etc
+
+```{r, include=T}
+lavaan::summary(model.fit, fit.measures = T, standardized = T)
+```
+
+We observe good values here too. Importantly, all factor loadings > .4.
+
+#### CFA: convergent validity
+Convergent validity is established when the average variance extracted (AVE) by the latent variables is greater than .5
+
+```{r, include=T}
+knitr::kable(condisc(model.fit)$Average_Variance_Extracted, col.names = "AVE", "simple")
+```
+
+Climate powerlessness has AVE < the standard cutoff .5, and climate isolation can be rounded to .5
+
+#### CFA: discriminant validity
+
+```{r, include=F}
+#to keep it clean, create a new data frame for the selected indicators
+ICE_select <- c(
+  "ICE.60.en.ANG14", "ICE.60.en.ANG13", "ICE.60.en.ANG10", "ICE.60.en.ANG3",
+  "ICE.60.en.DIS5", "ICE.60.en.DIS7", "ICE.60.en.IND2", "ICE.60.en.IND13",
+  "ICE.60.en.EMP12", "ICE.60.en.HOPF9", "ICE.60.en.HOPF8", "ICE.60.en.EMP7",
+  "ICE.60.en.POWL11", "ICE.60.en.POWL7", "ICE.60.en.POWL2", "ICE.60.en.POWL13",
+  "ICE.60.en.GUI11", "ICE.60.en.GUI6", "ICE.60.en.GUI8", "ICE.60.en.GUI12",
+  "ICE.60.en.ISO4", "ICE.60.en.ISO5", "ICE.60.en.ISO8", "ICE.60.en.ISO12",
+  "ICE.60.en.APP7", "ICE.60.en.HOPL5", "ICE.60.en.HOPL11", "ICE.60.en.APP14",
+  "ICE.60.en.SOR13", "ICE.60.en.SOR6", "ICE.60.en.SOR4", "ICE.60.en.SOR14"
+)
+
+ICE_data_short <- ICE_data[ICE_select]
+
+# add the values for latent factors
+ICE_data_short <- ICE_data_short %>% 
+  mutate(climate.anger = rowSums(.[1:4]), 
+         climate.contempt = rowSums(.[5:8]), 
+         climate.enthusiasm = rowSums(.[9:12]), 
+         climate.powerlessness = rowSums(.[13:16]), 
+         climate.guilt = rowSums(.[17:20]),
+         climate.isolation = rowSums(.[21:24]),
+         climate.anxiety = rowSums(.[25:28]),
+         climate.sorrow = rowSums(.[29:32]))
+
+#compute mean correlations between latent variables and their indicators (to get an indication of discriminant validity)
+
+ang.m <- mean(cor(ICE_data_short[1:4], ICE_data_short$climate.anger))
+cont.m <- mean(cor(ICE_data_short[5:8], ICE_data_short$climate.contempt))
+enth.m <- mean(cor(ICE_data_short[9:12], ICE_data_short$climate.enthusiasm))
+powl.m <- mean(cor(ICE_data_short[13:16], ICE_data_short$climate.powerlessness))
+gui.m <- mean(cor(ICE_data_short[17:20], ICE_data_short$climate.guilt))
+iso.m <- mean(cor(ICE_data_short[21:24], ICE_data_short$climate.isolation))
+anx.m <- mean(cor(ICE_data_short[25:28], ICE_data_short$climate.anxiety))
+sor.m <- mean(cor(ICE_data_short[29:32], ICE_data_short$climate.sorrow))
+```
+
+Discriminant validity is established when the average correlation between a latent variable and its indicators is higher than the squared correlation between the latent variables (Fornell & Larcker, 1981).
+
+Here are the average correlations between latent variables and their indicators:
+
+```{r, include=T}
+data.frame(ang.m, cont.m, enth.m, powl.m, gui.m, iso.m, anx.m, sor.m)
+```
+
+And here is a table with squared factor correlations:
+```{r, include=T}
+knitr::kable(condisc(model.fit)$Squared_Factor_Correlation, "simple")
+```
+
+For climate sorrow the squared correlation between it and climate anxiety is equal to the average correlation between a latent variable and its indicators. In addition, for climate anger, the squared correlation between it and climate anxiety is higher than the average correlation between a latent variable and its indicators.
+
+
+### Factor internal consistencies {.tabset}
+
+#### Raykov's rho
+
+```{r, include=T}
+raykovrho <- astatur::relicoef(model.fit)
+raykov.coefficient <- round(raykovrho$RRC, 2) #rounded
+clim.emotion <- c("climate_anger", "climate_contempt", "climate_enthusiasm", "climate_powerlessness", "climate_guilt", "climate_isolation", "climate_anxiety", "climate_sorrow")
+knitr::kable(cbind(clim.emotion, raykov.coefficient), "simple")
+```
+
+#### Cronbach's alpha
+```{r, include=T}
+knitr::kable(round(semTools::reliability(model.fit, what = "alpha"), 2)[1,], col.names = "alpha", "simple")
+```
+
+Very good or excellent internal consistency with an exception for climate powerlessness, which has acceptable internal consistency.
+
+
+## Nomological span
+
+```{r, include=F}
+#subset the data frame to work with for now
+others <- dplyr::select(qdata, starts_with(c("CCPS", "AS", "EAS", "MPS")))
+others <- as.data.frame(others)
+
+#change the variables type from character to numeric (keeping them in the data frame format)
+others <- as.data.frame(lapply(others, as.numeric))
+
+####explore & inspect the ICE data for consistency
+#is there any missing data?
+sum(colSums(is.na(others)))
+
+#a categorical representation of the data to check for inconsistent values
+lapply(others, table)
+
+# For the descriptives, the response format should be 1-5 not 0-4, hence we add 1 to each value in the data frame
+others <- others + 1
+
+#but not for climate change beliefs scale as 0 on that scale means that somebody doesn't believe in climate change
+others[,c(1:5)] <- others[,c(1:5)] - 1
+
+# overview of the data
+#psych::describe(s2.general)
+```
+
+### Recoding the reverse scored items
+Some items from the scales relevant for establishing concurrent & predictive validity are reversely scored. We need to recode them.
+
+```{r, include=T, echo = TRUE}
+#### CPS: 5
+others$CCPS.en.4 <- 8 - others$CCPS.en.4
+```
+
+### Internal consistencies of other scales
+
+Here, let's compute Cronbach's alpha coefficient for all the relevant scales.
+
+```{r, include=F}
+Climate_perceptions <- dplyr::select(others, c(1:5))
+
+Alienation <- dplyr::select(others, c(6:11))
+
+EAS_participatory_action <- dplyr::select(others, c(12, 13, 15, 16, 19, 20, 25, 26, 28, 29))
+EAS_leadership_action <- dplyr::select(others, c(14, 17, 18, 21, 22, 23, 24, 27))
+
+Mitigation_policy_support <- dplyr::select(others, c(30:34))
+
+s_reliabilities_list <- list(Climate_perceptions, Alienation, 
+                             EAS_participatory_action, EAS_leadership_action,
+                             Mitigation_policy_support
+                             )
+
+compute.alpha.each.scale <- (lapply(s_reliabilities_list, psych::alpha, check.keys=TRUE))
+
+
+s_reliabilities <- sapply(compute.alpha.each.scale, "[[", 1)[1:2,]
+colnames(s_reliabilities) <- c("Climate_perceptions", "Alienation", 
+                               "EAS_participatory_action", "EAS_leadership_action",
+                               "Mitigation_policy_support" 
+                               )
+```
+
+```{r, include=T}
+knitr::kable(s_reliabilities, "simple")
+```
+
+### Descriptives for all the scales
+
+```{r, include=F}
+###create a data frame with global and dimensional results for each scale
+## add the final ICE scales to it
+
+glob_dim <- data.frame(Climate_perceptions = rowSums(others[1:5])/5,
+                       Alienation = rowSums(others[6:11])/6,
+                       EAS_participatory_action = rowSums(others[, c(12, 13, 15, 16, 19, 20, 25, 26, 28, 29)])/10,
+                       EAS_leadership_action = rowSums(others[, c(14, 17, 18, 21, 22, 23, 24, 27)])/8,
+                       Mitigation_policy_support = rowSums(others[30:34])/5
+)
+
+
+
+#add ICE scales to this data frame
+#but first, change total score to mean
+ICE_scales_means <- ICE_data_short[,33:40]/4
+
+all <- cbind(glob_dim, ICE_scales_means)
+```
+
+```{r, include=T}
+#### descriptives for all the data
+colnames(all) <- c("pro-climate perceptions", "alienation", "participatory action", "leadership action", "mitigation policy support", "climate anger", "climate contempt", "climate enthusiasm", "climate powerlessness", "climate guilt", "climate isolation", "climate anxiety", "climate sorrow")
+
+knitr::kable(psych::describe(all), "simple")
+```
+
+```{r, include=F}
+## save the descriptives to copy it easily to the paper
+descriptivez <- psych::describe(all)
+
+write.table(descriptivez, file = "Descriptives_IRL.csv", sep = ";")
+```
+
+### Distribution of the variables
+
+We will investigate the distribution using the Shapiro-Wilk test.
+
+#### Formal test
+
+```{r, include=T}
+#formal inspection with shapiro-wilk test
+lapply(all, shapiro.test)
+```
+
+For all  variables p < .05 so we can say that most of our variables deviate from normal distribution
+
+
+```{r, include=F}
+#### Visual inspection
+#scale the data so that the graphs can be displayed together
+data.scaled <- scale(all)
+
+data.gathered <- data.scaled %>%
+  as_tibble() %>%
+  select_if(is.numeric) %>%
+  gather(key = "variable", value = "value")
+
+
+ggplot(data.gathered, aes(value)) +
+  geom_density(fill = "lightgrey") +
+  facet_wrap(~variable)
+```
+
+### Correlational analysis
+
+As the data deviates from the normal distribution and because it is ordinal anyways, let's use Spearman correlation coefficients.
+
+
+```{r, include=T}
+###### Add demographic variables to the dataframe for additional correlations
+dems_cor <- dplyr::select(qdata, starts_with("demo"))
+dems_cor <- as.data.frame(dems_cor)
+
+#rename the variables so that it's easier to navigate
+colnames(dems_cor) <- c("cc_concern", "gender", "yearOfbirth", "country", "language1", "language2", "area", "education", "any_views", "any_l_r", "politicalViews", "perceived_SES", "edu_other_specify")
+
+age <- 2022 - as.numeric(dems_cor$yearOfbirth)
+dems_cor <- as.data.frame(lapply(dems_cor, as.numeric))
+
+#combine dems_cor and all for the additional correlational analysis
+all2 <- cbind(dems_cor$cc_concern, dems_cor$gender, age, dems_cor$area, dems_cor$education, rev(dems_cor$perceived_SES), all)
+
+colnames(all2) <- c("climate concern", "gender", "age", "residence area", "education", "perceived SES", "pro-climate perceptions", "alienation", "participatory action", "leadership action", "mitigation policy support", "climate anger", "climate contempt", "climate enthusiasm", "climate powerlessness", "climate guilt", "climate isolation", "climate anxiety", "climate sorrow")
+
+# filter out four casea of education = 4 (other)
+#all2 <- all2[-c(which(all2$education==4)), ]
+#table(all2$education)
+
+#merge "secondary education" and "vocational training" into one level
+all2$education <- as.factor(all2$education)
+levels(all2$education)[levels(all2$education)=="1"] <-"2"
+
+#table(dems_cor$edu_other_specify)
+#merge "University/college degree" and "other" into one level (the open-ended answers in other were: College Certificate, Doctorate, Higher certificate, HND (higher national degree), pos graduate)
+levels(all2$education)[levels(all2$education)=="4"] <-"3"
+
+#change the numbering of factors in education so that it starts from 1
+all2$education <- dplyr::recode(all2$education, '0' = '1', '2' = '2', '3' = '3')
+all2$education <- as.numeric(all2$education)
+```
+
+
+```{r, include=T}
+knitr::kable(correlation_matrix(all2, type = "spearman", digits = 2, use = 'lower', replace_diagonal = T), "simple")
+```
+
+Note: N =  485; Climate concern: 0 - "Not at all concerned", 1 - "Not very concerned", 2 - "Somewhat concerned", 3 - "Very concerned", 4 - "Extremely concerned"; Gender: 0 - Female, 1 - Male; Residence area: 0 - "A big city", 1 - "The suburbs or outskirts of a big city", 2 - "A town or a small city", 3 - "A country village", 4 - "A farm or home in the countryside"; Education: 0 - "Primary education", 1 - "Secondary education or vocational training", 3 - "University/college degree" (the option "other" (n = 5) included the following open-ended answers: "College Certificate", "Doctorate", "Higher certificate", "HND" (higher national degree), "pos graduate") so we combined these answers with 3 - "University/college degree"); Perceived SES: 0 - "Finding it very difficult on present income", 1 - ""Finding it difficult on present income", 2 - "Coping on present income", 3 - "Living comfortably on present income".
+
+#### Heatmap
+A hierarchically clustered heatmap summarising the correlational analysis; the clustering was performed based on the complete-linkage method.
+
+```{r, include=T}
+###correlation heatmap 2 - clustered (the version used in the manuscript)
+
+library(ggcorrplot)
+
+corr <- round(cor(all2), 2)
+# Compute a matrix of correlation p-values
+p.mat <- cor_pmat(all2)
+
+# Get the upper triangle clustered heatmap
+ggcorrplot(corr, hc.order = TRUE, type = "upper",
+           outline.col = "white", legend.title = "Spearman's ρ", p.mat = p.mat, lab = F) +
+  theme(legend.position="bottom")
+
+```
+
+
+```{r, include=F}
+###### demographics
+dems <- dplyr::select(qdata, starts_with("demo"))
+dems <- as.data.frame(dems)
+
+lapply(dems, table)
+
+#rename the variables so that it's easier to navigate
+colnames(dems) <- c("cc_concern", "gender", "yearOfbirth", "country", "language1", "language2", "area", "education", "any_views", "any_l_r", "politicalViews", "perceived_SES", "edu_other_specify")
+
+#add dems to s2.all for later analysis
+all <- cbind(all, dems)
+
+###decribe the demographics more for the paper - means etc
+#Gender
+table(dems$gender)
+#61% women
+
+#Age
+age <- 2022 - as.numeric(dems$yearOfbirth)
+psych::describe(age)
+
+all <- cbind(all, age)
+all["age_group"] <- cut(all$age, c(0, 23, 35, 55, Inf), c("genZ", "millennial", "genX", "boomer"), include.lowest=TRUE)
+
+prop.table(table(all$age_group))*100
+
+# urban vs rural
+round(prop.table(table(dems$area))*100, 0)
+
+
+#0 - "A big city"
+# 1 - The suburbs or outskirts of a big city"
+# 2 - A town or a small city"
+# 3 - "A country village"
+# 4 - A farm or home in the countryside
+# urban: big city, suburbs of a big city, small city or town; sum up
+
+# educational attainment
+round(prop.table(table(as.numeric(dems$education)))*100, 0)
+
+# 0 - "Primary education"
+# 1 -"Secondary education"
+# 2 - "Vocational training"
+# 3 - "University/College degree"
+# 4 - ("Other" :subq ((:te "Please specify:")))))
+
+
+# climate change concern
+round(prop.table(table(dems$cc_concern))*100, 0)
+
+#0 "Not at all concerned"
+#1 "Not very concerned"
+#2 "Somewhat concerned"
+#3 "Very concerned"
+#4 "Extremely concerned"
+
+# perceived SES
+round(prop.table(table(dems$perceived_SES))*100, 0)
+
+# 0 "Living comfortably on present income"
+# 1 "Coping on present income"
+# 2 "Finding it difficult on present income"
+# 3 "Finding it very difficult on present income"
+```
+
+## Note
+This html output presents the general logic of the analysis along with some results not outlined in the main body of the manuscript. Please note that the full R code for the data cleaning and data analysis is available in the supplementary materials on the accompanying OSF website.
