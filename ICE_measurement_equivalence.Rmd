@@ -1,12 +1,16 @@
 ---
-title: "Cross-Cultural Validation of the ICE: Measurement Equivalence"
+title: |
+  | Cross-cultural validation of the ICE:
+  | Measurement equivalence
 author: "Michalina Marczak"
-date: '2022-10-05'
+date: "Last compiled on `r format(Sys.time(), '%d %B, %Y')`"
 output:
   html_document:
     toc: true
     toc_depth: 3
     toc_float: false
+    fig_width: 8
+    fig_height: 8
 ---
 
 ```{r setup, include=FALSE, warning=FALSE}

@@ -1,7 +1,7 @@
 ---
-title: "Cross-Cultural Validation of the ICE: Norway"
+title: "Cross-cultural validation of the ICE: Norway"
 author: "Michalina Marczak"
-date: '2022-09-13'
+date: "Last compiled on `r format(Sys.time(), '%d %B, %Y')`"
 output: 
   html_document:
     toc: true

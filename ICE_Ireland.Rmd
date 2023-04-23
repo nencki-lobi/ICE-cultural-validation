@@ -1,5 +1,5 @@
----
-title: "Cross-Cultural Validation of the ICE: Ireland"
+---  
+title: "Cross-cultural validation of the ICE: Ireland"
 author: "Michalina Marczak"
 date: "Last compiled on `r format(Sys.time(), '%d %B, %Y')`"
 output: 
