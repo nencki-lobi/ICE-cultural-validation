@@ -4,7 +4,7 @@ This repository contains supplementary materials (data and code) associated with
 
 Please cite the corresponding publication when using these materials:
 
-> Marczak, M., Wierzba, M., Morote Rios, R., Kossowski, B., Marchewka A., & Klöckner, C.A. (2023) *Emotional responses to climate change in Norway and Ireland - cross-cultural validation of the Inventory of Climate Emotions (ICE)* PsyArXiv. [DOI]()
+> Marczak, M., Wierzba, M., Morote Rios, R., Kossowski, B., Marchewka A., & Klöckner, C.A. (2023) *Emotional responses to climate change in Norway and Ireland - cross-cultural validation of the Inventory of Climate Emotions (ICE)* PsyArXiv. DOI:10.31234/osf.io/v8hm9. [https://psyarxiv.com/v8hm9/](https://psyarxiv.com/v8hm9/)
 
 ## Contents
 
